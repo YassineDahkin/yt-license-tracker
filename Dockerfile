@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y ffmpeg python3 python3-pip --no-install
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 COPY prisma ./prisma
 RUN npx prisma generate
