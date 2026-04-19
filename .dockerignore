@@ -1,0 +1,9 @@
+.git
+.next
+node_modules
+*.md
+.env
+.env.local
+.env*.local
+stripe.tar.gz
+*.js.map
