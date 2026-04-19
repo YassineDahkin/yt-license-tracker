@@ -12,7 +12,11 @@ COPY prisma ./prisma
 RUN npm install
 
 COPY . .
-RUN npm run build
+RUN DATABASE_URL="postgresql://build:build@localhost/build" \
+    DIRECT_URL="postgresql://build:build@localhost/build" \
+    STRIPE_SECRET_KEY="sk_test_build" \
+    AUTH_SECRET="build-secret-32-chars-placeholder" \
+    npm run build
 
 EXPOSE 3000
 ENV NODE_ENV=production
