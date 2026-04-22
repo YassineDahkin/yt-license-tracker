@@ -39,6 +39,7 @@ function downloadAudioToFile(youtubeVideoId: string): Promise<string | null> {
       "-f", "bestaudio",
       "-o", template,
       "--no-playlist",
+      "--js-runtimes", "node",
       `https://www.youtube.com/watch?v=${youtubeVideoId}`,
     ])
 
