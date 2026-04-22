@@ -103,11 +103,11 @@ export async function POST(req: Request) {
     saved++
   }
 
-  // Trigger background risk rescoring
-  await inngest.send({
-    name: "licenses/uploaded",
-    data: { userId },
-  })
+  // Trigger background risk rescoring + immediate expiry check
+  await inngest.send([
+    { name: "licenses/uploaded", data: { userId } },
+    { name: "alerts/check-expiry.requested", data: { userId } },
+  ])
 
   return NextResponse.json({ saved, platform })
 }

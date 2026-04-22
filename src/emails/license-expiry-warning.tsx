@@ -41,13 +41,18 @@ export function LicenseExpiryWarning({
   expiresAt,
   daysLeft,
 }: LicenseExpiryWarningProps) {
-  const color = urgencyColor(daysLeft)
+  const isExpired = daysLeft <= 0
+  const color = isExpired ? "#dc2626" : urgencyColor(daysLeft)
   const urgency = daysLeft <= 3 ? "URGENT: " : ""
 
   return (
     <Html>
       <Head />
-      <Preview>{`${urgency}Your license for "${trackTitle}" expires in ${daysLeft} days`}</Preview>
+      <Preview>
+        {isExpired
+          ? `Your license for "${trackTitle}" has expired`
+          : `${urgency}Your license for "${trackTitle}" expires in ${daysLeft} days`}
+      </Preview>
       <Body style={{ backgroundColor: "#f9fafb", fontFamily: "sans-serif" }}>
         <Container style={{ maxWidth: "520px", margin: "40px auto", backgroundColor: "#fff", borderRadius: "8px", padding: "32px", border: "1px solid #e5e7eb" }}>
           <Heading style={{ color: "#111827", fontSize: "20px", marginBottom: "4px" }}>
@@ -55,22 +60,23 @@ export function LicenseExpiryWarning({
           </Heading>
           <Text style={{ color: "#6b7280", marginTop: 0 }}>Hi {userName},</Text>
 
-          <Section style={{ backgroundColor: "#fef3c7", borderRadius: "6px", padding: "16px", margin: "20px 0", borderLeft: `4px solid ${color}` }}>
-            <Text style={{ margin: 0, fontWeight: "600", color: "#92400e" }}>
-              License expiring in {daysLeft} day{daysLeft === 1 ? "" : "s"}
+          <Section style={{ backgroundColor: isExpired ? "#fee2e2" : "#fef3c7", borderRadius: "6px", padding: "16px", margin: "20px 0", borderLeft: `4px solid ${color}` }}>
+            <Text style={{ margin: 0, fontWeight: "600", color: isExpired ? "#991b1b" : "#92400e" }}>
+              {isExpired ? "License EXPIRED" : `License expiring in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`}
             </Text>
-            <Text style={{ margin: "8px 0 0", color: "#78350f" }}>
+            <Text style={{ margin: "8px 0 0", color: isExpired ? "#7f1d1d" : "#78350f" }}>
               <strong>"{trackTitle}"</strong> by {artist}
               <br />
               Platform: {platformLabel(platform)}
               <br />
-              Expires: {expiresAt.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+              {isExpired ? "Expired" : "Expires"}: {expiresAt.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
             </Text>
           </Section>
 
           <Text style={{ color: "#374151" }}>
-            This track is used in your YouTube videos. If your license expires without renewal,
-            videos using this track may receive copyright claims.
+            {isExpired
+              ? "This license has expired. Videos using this track may already be receiving copyright claims. Take action now to protect your revenue."
+              : "This track is used in your YouTube videos. If your license expires without renewal, videos using this track may receive copyright claims."}
           </Text>
 
           <Hr style={{ borderColor: "#e5e7eb" }} />

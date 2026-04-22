@@ -28,10 +28,14 @@ export async function sendLicenseExpiryEmail(params: LicenseExpiryEmailParams) {
     LicenseExpiryWarning({ ...rest, daysLeft }) as React.ReactElement,
   )
 
+  const subject = daysLeft <= 0
+    ? `URGENT: License for "${params.trackTitle}" has expired`
+    : `${urgency}License for "${params.trackTitle}" expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
+
   const { data, error } = await getResend().emails.send({
     from: FROM,
     to,
-    subject: `${urgency}License for "${params.trackTitle}" expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`,
+    subject,
     html,
   })
 

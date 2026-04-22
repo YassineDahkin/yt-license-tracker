@@ -27,12 +27,12 @@ export const checkLicenseExpiryFunction = inngest.createFunction(
     const now = new Date()
     const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
-    // Fetch all licenses expiring within 30 days in one query
-    const expiringLicenses = await step.run("fetch-expiring-licenses", () =>
+    // Fetch licenses expiring within 30 days OR already expired
+    const relevantLicenses = await step.run("fetch-relevant-licenses", () =>
       db.license.findMany({
         where: {
           userId,
-          expiresAt: { gte: now, lte: in30Days },
+          expiresAt: { not: null, lte: in30Days },
         },
         include: { track: true },
       }),
@@ -40,15 +40,28 @@ export const checkLicenseExpiryFunction = inngest.createFunction(
 
     let alertsCreated = 0
 
-    for (const license of expiringLicenses) {
+    for (const license of relevantLicenses) {
       const expiresDate = new Date(license.expiresAt as unknown as string)
       const daysLeft = Math.ceil((expiresDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
 
-      // Pick most urgent threshold that applies
-      const threshold = THRESHOLDS.find(t => daysLeft <= t.days)
-      if (!threshold) continue
+      // Already expired
+      const isExpired = expiresDate < now
 
-      const { days, alertType } = threshold
+      let alertType: "LICENSE_EXPIRED" | "LICENSE_EXPIRY_3" | "LICENSE_EXPIRY_14" | "LICENSE_EXPIRY_30"
+      let title: string
+      let body: string
+
+      if (isExpired) {
+        alertType = "LICENSE_EXPIRED"
+        title = `License expired for "${license.track.title}"`
+        body = `"${license.track.title}" by ${license.track.artist} (${license.platform}) expired on ${expiresDate.toLocaleDateString()}. Videos using this track may receive copyright claims.`
+      } else {
+        const threshold = THRESHOLDS.find(t => daysLeft <= t.days)
+        if (!threshold) continue
+        alertType = threshold.alertType
+        title = `License expiring in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
+        body = `"${license.track.title}" by ${license.track.artist} (${license.platform}) expires on ${expiresDate.toLocaleDateString()}.`
+      }
 
       // Dedup: skip if same alert type for this license already created today
       const existing = await db.alert.findFirst({
@@ -60,9 +73,6 @@ export const checkLicenseExpiryFunction = inngest.createFunction(
         },
       })
       if (existing) continue
-
-      const title = `License expiring in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
-      const body = `"${license.track.title}" by ${license.track.artist} (${license.platform}) expires on ${expiresDate.toLocaleDateString()}.`
 
       await step.run(`create-alert-${license.id}`, () =>
         db.alert.create({
@@ -85,7 +95,7 @@ export const checkLicenseExpiryFunction = inngest.createFunction(
             artist: license.track.artist,
             platform: license.platform,
             expiresAt: expiresDate,
-            daysLeft,
+            daysLeft: isExpired ? 0 : daysLeft,
           }),
         )
       }
