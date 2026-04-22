@@ -1,5 +1,5 @@
 import { spawn } from "child_process"
-import { existsSync, unlinkSync } from "fs"
+import { existsSync, readdirSync, unlinkSync } from "fs"
 import { tmpdir } from "os"
 import { join } from "path"
 
@@ -27,25 +27,33 @@ interface AudDResponse {
   error?: { error_code: number; error_message: string }
 }
 
-// Download full audio to a temp file — returns path or null on failure
-function downloadAudioToFile(youtubeVideoId: string, destPath: string): Promise<boolean> {
+// Download full audio to temp file — returns actual path (with ext) or null
+// yt-dlp auto-appends extension, so we use %(ext)s template and find the file afterward
+function downloadAudioToFile(youtubeVideoId: string): Promise<string | null> {
   return new Promise((resolve) => {
+    const baseName = `tuneguard-${youtubeVideoId}-${Date.now()}`
+    const template = join(tmpdir(), `${baseName}.%(ext)s`)
+
     const ytdlp = spawn("yt-dlp", [
       "-f", "bestaudio",
-      "-o", destPath,
+      "-o", template,
       "--quiet",
       "--no-playlist",
       `https://www.youtube.com/watch?v=${youtubeVideoId}`,
     ])
 
-    const timer = setTimeout(() => { ytdlp.kill(); resolve(false) }, 120_000)
+    const timer = setTimeout(() => { ytdlp.kill(); resolve(null) }, 120_000)
 
     ytdlp.on("close", (code) => {
       clearTimeout(timer)
-      resolve(code === 0 && existsSync(destPath))
+      if (code !== 0) { resolve(null); return }
+      try {
+        const files = readdirSync(tmpdir()).filter(f => f.startsWith(baseName))
+        resolve(files.length > 0 ? join(tmpdir(), files[0]) : null)
+      } catch { resolve(null) }
     })
 
-    ytdlp.on("error", () => { clearTimeout(timer); resolve(false) })
+    ytdlp.on("error", () => { clearTimeout(timer); resolve(null) })
   })
 }
 
@@ -117,11 +125,10 @@ export async function recognizeMusicInVideo(
 ): Promise<(AudDTrack & { isrc?: string }) | null> {
   if (!process.env.AUDD_API_KEY) return null
 
-  const tmpPath = join(tmpdir(), `tuneguard-${youtubeVideoId}-${Date.now()}`)
+  const tmpPath = await downloadAudioToFile(youtubeVideoId)
 
   try {
-    const downloaded = await downloadAudioToFile(youtubeVideoId, tmpPath)
-    if (!downloaded) return null
+    if (!tmpPath) return null
 
     for (const offset of SCAN_OFFSETS) {
       const buf = await extractSegmentFromFile(tmpPath, offset)
@@ -132,7 +139,6 @@ export async function recognizeMusicInVideo(
 
     return null
   } finally {
-    // Clean up temp file regardless of outcome
-    try { if (existsSync(tmpPath)) unlinkSync(tmpPath) } catch {}
+    try { if (tmpPath && existsSync(tmpPath)) unlinkSync(tmpPath) } catch {}
   }
 }
