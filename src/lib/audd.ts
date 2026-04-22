@@ -33,27 +33,46 @@ function downloadAudioToFile(youtubeVideoId: string): Promise<string | null> {
   return new Promise((resolve) => {
     const baseName = `tuneguard-${youtubeVideoId}-${Date.now()}`
     const template = join(tmpdir(), `${baseName}.%(ext)s`)
+    const stderrLines: string[] = []
 
     const ytdlp = spawn("yt-dlp", [
       "-f", "bestaudio",
       "-o", template,
-      "--quiet",
       "--no-playlist",
       `https://www.youtube.com/watch?v=${youtubeVideoId}`,
     ])
 
-    const timer = setTimeout(() => { ytdlp.kill(); resolve(null) }, 120_000)
+    ytdlp.stderr.on("data", (d: Buffer) => stderrLines.push(d.toString()))
+    ytdlp.stdout.on("data", () => {})
+
+    const timer = setTimeout(() => {
+      ytdlp.kill()
+      console.error(`[audd] yt-dlp timeout for ${youtubeVideoId}`)
+      resolve(null)
+    }, 120_000)
 
     ytdlp.on("close", (code) => {
       clearTimeout(timer)
-      if (code !== 0) { resolve(null); return }
+      if (code !== 0) {
+        console.error(`[audd] yt-dlp exit ${code} for ${youtubeVideoId}:`, stderrLines.slice(-3).join(" "))
+        resolve(null)
+        return
+      }
       try {
         const files = readdirSync(tmpdir()).filter(f => f.startsWith(baseName))
+        console.log(`[audd] downloaded ${youtubeVideoId} → ${files[0] ?? "NOT FOUND"} (tmpdir=${tmpdir()})`)
         resolve(files.length > 0 ? join(tmpdir(), files[0]) : null)
-      } catch { resolve(null) }
+      } catch (e) {
+        console.error(`[audd] readdirSync failed:`, e)
+        resolve(null)
+      }
     })
 
-    ytdlp.on("error", () => { clearTimeout(timer); resolve(null) })
+    ytdlp.on("error", (e) => {
+      clearTimeout(timer)
+      console.error(`[audd] spawn error:`, e)
+      resolve(null)
+    })
   })
 }
 
@@ -128,12 +147,17 @@ export async function recognizeMusicInVideo(
   const tmpPath = await downloadAudioToFile(youtubeVideoId)
 
   try {
-    if (!tmpPath) return null
+    if (!tmpPath) {
+      console.error(`[audd] no file for ${youtubeVideoId}, skipping recognition`)
+      return null
+    }
 
     for (const offset of SCAN_OFFSETS) {
       const buf = await extractSegmentFromFile(tmpPath, offset)
+      console.log(`[audd] offset=${offset}s buf=${buf ? buf.length : "null"} for ${youtubeVideoId}`)
       if (!buf) continue
       const result = await recognizeBuffer(process.env.AUDD_API_KEY, buf)
+      console.log(`[audd] AudD result offset=${offset}s:`, result ? `${result.artist} - ${result.title}` : "null")
       if (result) return result
     }
 
