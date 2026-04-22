@@ -57,7 +57,8 @@ export const scoreVideosFunction = inngest.createFunction(
           if (videoTracks.length > 0) {
             const trackRisks: RiskLevel[] = videoTracks.map((vt) => {
               const licenses = vt.track.licenses
-              if (licenses.length === 0) return "UNKNOWN" as RiskLevel
+              // Music detected but no license on file → AT_RISK (not UNKNOWN)
+              if (licenses.length === 0) return "AT_RISK" as RiskLevel
               // Best-case across all licenses for this track
               const trackLevelRisks = licenses.map((lic) =>
                 trackRiskLevel(lic.expiresAt ?? null),
@@ -73,10 +74,13 @@ export const scoreVideosFunction = inngest.createFunction(
             risk = worstRisk(trackRisks)
           }
 
-          await db.video.update({
-            where: { id: video.id },
-            data: { riskScore: risk },
-          })
+          // Only update if we have data — don't overwrite AT_RISK with UNKNOWN for no-track videos
+          if (videoTracks.length > 0) {
+            await db.video.update({
+              where: { id: video.id },
+              data: { riskScore: risk },
+            })
+          }
           scored++
         }
       })
