@@ -5,7 +5,7 @@ import { join } from "path"
 
 const AUDD_API_URL = "https://api.audd.io/"
 const MAX_AUDIO_BYTES = 800 * 1024
-const SCAN_OFFSETS = [0, 30, 60, 90]
+const SCAN_OFFSETS = [0, 30, 60, 90, 120, 150]
 
 export interface AudDTrack {
   title: string

@@ -2,6 +2,7 @@ import { inngest } from "../client"
 import { db } from "@/lib/db"
 import { recognizeMusicInVideo } from "@/lib/audd"
 import { parseTracksFromDescription } from "@/lib/description-parser"
+import { sendUnlicensedTrackEmail } from "@/lib/resend"
 
 export const scanVideoFunction = inngest.createFunction(
   {
@@ -88,50 +89,90 @@ export const scanVideoFunction = inngest.createFunction(
         }),
       )
 
-      // Alert for any detected track that has no valid license
+      // After scan: score video risk + alert on unlicensed tracks
       if (savedTrackIds.length > 0) {
-        await step.run("check-unlicensed-tracks", async () => {
+        await step.run("score-and-alert-unlicensed", async () => {
           const now = new Date()
+          const user = await db.user.findUnique({
+            where: { id: userId },
+            select: { email: true, name: true },
+          })
+
+          let videoRisk: "SAFE" | "AT_RISK" | "EXPIRED" | "UNKNOWN" = "UNKNOWN"
 
           for (const trackId of savedTrackIds) {
             const track = await db.track.findUnique({ where: { id: trackId } })
             if (!track) continue
 
-            const validLicense = await db.license.findFirst({
-              where: {
-                userId,
-                trackId,
-                OR: [
-                  { expiresAt: null },
-                  { expiresAt: { gt: now } },
-                ],
-              },
+            // Check best available license for this track
+            const licenses = await db.license.findMany({
+              where: { userId, trackId },
             })
 
-            if (validLicense) continue
+            let trackRisk: "SAFE" | "AT_RISK" | "EXPIRED" | "UNKNOWN" = "UNKNOWN"
 
-            // Dedup: skip if same alert already created for this video+track in last 7 days
-            const existing = await db.alert.findFirst({
-              where: {
-                userId,
-                type: "SCAN_COMPLETE",
-                metadata: {
-                  path: ["videoId"],
-                  equals: videoId,
+            if (licenses.length === 0) {
+              // Music detected, no license → AT_RISK
+              trackRisk = "AT_RISK"
+            } else {
+              // Pick best license
+              for (const lic of licenses) {
+                if (!lic.expiresAt) { trackRisk = "SAFE"; break }
+                const daysLeft = (new Date(lic.expiresAt).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+                if (new Date(lic.expiresAt) < now) {
+                  if (trackRisk !== "SAFE" && trackRisk !== "AT_RISK") trackRisk = "EXPIRED"
+                } else if (daysLeft <= 30) {
+                  if (trackRisk !== "SAFE") trackRisk = "AT_RISK"
+                } else {
+                  trackRisk = "SAFE"
+                }
+              }
+            }
+
+            // Worst risk wins for the video
+            const PRIORITY = { EXPIRED: 3, AT_RISK: 2, SAFE: 1, UNKNOWN: 0 }
+            if (PRIORITY[trackRisk] > PRIORITY[videoRisk]) videoRisk = trackRisk
+
+            // Alert + email only for unlicensed (AT_RISK from no license)
+            if (trackRisk === "AT_RISK" && licenses.length === 0) {
+              const existing = await db.alert.findFirst({
+                where: {
+                  userId,
+                  type: "SCAN_COMPLETE",
+                  metadata: { path: ["videoId"], equals: videoId },
+                  createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
                 },
-                createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
-              },
-            })
-            if (existing) continue
+              })
+              if (!existing) {
+                await db.alert.create({
+                  data: {
+                    userId,
+                    type: "SCAN_COMPLETE",
+                    title: "Unlicensed track detected",
+                    body: `"${track.title}" by ${track.artist} was detected in "${video?.title ?? videoId}" but no valid license was found.`,
+                    metadata: { videoId, trackId, trackTitle: track.title, artist: track.artist },
+                  },
+                })
 
-            await db.alert.create({
-              data: {
-                userId,
-                type: "SCAN_COMPLETE",
-                title: "Unlicensed track detected",
-                body: `"${track.title}" by ${track.artist} was detected in "${video?.title ?? videoId}" but no valid license was found.`,
-                metadata: { videoId, trackId, trackTitle: track.title, artist: track.artist },
-              },
+                if (process.env.RESEND_API_KEY && user) {
+                  await sendUnlicensedTrackEmail({
+                    to: user.email,
+                    userName: user.name ?? user.email,
+                    trackTitle: track.title,
+                    artist: track.artist,
+                    videoTitle: video?.title ?? youtubeVideoId,
+                    youtubeVideoId,
+                  }).catch(() => {}) // non-fatal
+                }
+              }
+            }
+          }
+
+          // Update video risk score based on detected tracks + licenses
+          if (videoRisk !== "UNKNOWN") {
+            await db.video.update({
+              where: { id: videoId },
+              data: { riskScore: videoRisk },
             })
           }
         })

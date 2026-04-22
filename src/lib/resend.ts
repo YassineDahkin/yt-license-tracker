@@ -1,6 +1,7 @@
 import { Resend } from "resend"
 import { render } from "@react-email/components"
 import { LicenseExpiryWarning } from "@/emails/license-expiry-warning"
+import { UnlicensedTrackAlert } from "@/emails/unlicensed-track-alert"
 
 // Lazy init — don't crash at module load when key is absent
 function getResend() {
@@ -36,6 +37,29 @@ export async function sendLicenseExpiryEmail(params: LicenseExpiryEmailParams) {
     from: FROM,
     to,
     subject,
+    html,
+  })
+
+  if (error) throw new Error(`Resend error: ${error.message}`)
+  return data
+}
+
+interface UnlicensedTrackEmailParams {
+  to: string
+  userName: string
+  trackTitle: string
+  artist: string
+  videoTitle: string
+  youtubeVideoId: string
+}
+
+export async function sendUnlicensedTrackEmail(params: UnlicensedTrackEmailParams) {
+  const html = await render(UnlicensedTrackAlert(params) as React.ReactElement)
+
+  const { data, error } = await getResend().emails.send({
+    from: FROM,
+    to: params.to,
+    subject: `⚠️ Unlicensed music detected: "${params.trackTitle}" in your video`,
     html,
   })
 
