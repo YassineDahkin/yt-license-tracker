@@ -26,7 +26,7 @@ export const scanVideoFunction = inngest.createFunction(
     )
 
     try {
-      const [auddResult, video] = await Promise.all([
+      const [auddResults, video] = await Promise.all([
         step.run("audd-recognize", () => recognizeMusicInVideo(youtubeVideoId)),
         step.run("fetch-description", () =>
           db.video.findUnique({
@@ -43,7 +43,7 @@ export const scanVideoFunction = inngest.createFunction(
       await step.run("save-tracks", async () => {
         const saves: Promise<unknown>[] = []
 
-        if (auddResult) {
+        for (const auddResult of auddResults) {
           const isrcKey =
             auddResult.isrc ??
             `audd::${auddResult.artist.toLowerCase()}::${auddResult.title.toLowerCase()}`
@@ -178,7 +178,7 @@ export const scanVideoFunction = inngest.createFunction(
         })
       }
 
-      return { videoId, auddFound: !!auddResult, descriptionTracksFound: descriptionTracks.length }
+      return { videoId, auddFound: auddResults.length, descriptionTracksFound: descriptionTracks.length }
     } catch (err) {
       await db.video.update({
         where: { id: videoId },

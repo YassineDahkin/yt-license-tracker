@@ -5,7 +5,8 @@ import { join } from "path"
 
 const AUDD_API_URL = "https://api.audd.io/"
 const MAX_AUDIO_BYTES = 800 * 1024
-const SCAN_OFFSETS = [0, 30, 60, 90, 120, 150]
+// Every 90s up to 15 min — covers most YouTube video lengths
+const SCAN_OFFSETS = [20, 90, 180, 270, 360, 450, 540, 630, 720, 810]
 
 export interface AudDTrack {
   title: string
@@ -139,30 +140,46 @@ async function recognizeBuffer(apiKey: string, buf: Buffer): Promise<(AudDTrack 
   return { ...data.result, isrc }
 }
 
-// Download once, sample 4 offsets — return first recognition hit
+function trackKey(t: AudDTrack & { isrc?: string }): string {
+  return t.isrc ?? `${t.artist.toLowerCase().trim()}::${t.title.toLowerCase().trim()}`
+}
+
+// Download once, sample all offsets — return ALL unique tracks found
 export async function recognizeMusicInVideo(
   youtubeVideoId: string,
-): Promise<(AudDTrack & { isrc?: string }) | null> {
-  if (!process.env.AUDD_API_KEY) return null
+): Promise<(AudDTrack & { isrc?: string })[]> {
+  if (!process.env.AUDD_API_KEY) return []
 
   const tmpPath = await downloadAudioToFile(youtubeVideoId)
 
   try {
     if (!tmpPath) {
       console.error(`[audd] no file for ${youtubeVideoId}, skipping recognition`)
-      return null
+      return []
     }
+
+    const seen = new Set<string>()
+    const tracks: (AudDTrack & { isrc?: string })[] = []
 
     for (const offset of SCAN_OFFSETS) {
       const buf = await extractSegmentFromFile(tmpPath, offset)
       console.log(`[audd] offset=${offset}s buf=${buf ? buf.length : "null"} for ${youtubeVideoId}`)
       if (!buf) continue
+
       const result = await recognizeBuffer(process.env.AUDD_API_KEY, buf)
       console.log(`[audd] AudD result offset=${offset}s:`, result ? `${result.artist} - ${result.title}` : "null")
-      if (result) return result
+
+      if (result) {
+        const key = trackKey(result)
+        if (!seen.has(key)) {
+          seen.add(key)
+          tracks.push(result)
+        }
+      }
     }
 
-    return null
+    console.log(`[audd] ${youtubeVideoId} → ${tracks.length} unique track(s) found`)
+    return tracks
   } finally {
     try { if (tmpPath && existsSync(tmpPath)) unlinkSync(tmpPath) } catch {}
   }
