@@ -82,23 +82,23 @@ export default async function VideosPage() {
               {videos.map((video) => (
                 <div key={video.id} className="flex items-start gap-4 px-6 py-4">
                   {video.thumbnailUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={video.thumbnailUrl}
-                      alt={video.title}
-                      className="h-16 w-28 flex-shrink-0 rounded object-cover"
-                    />
+                    <Link href={`/dashboard/videos/${video.id}`}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={video.thumbnailUrl}
+                        alt={video.title}
+                        className="h-16 w-28 flex-shrink-0 rounded object-cover hover:opacity-80 transition-opacity cursor-pointer"
+                      />
+                    </Link>
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
-                      <a
-                        href={`https://youtube.com/watch?v=${video.youtubeVideoId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <Link
+                        href={`/dashboard/videos/${video.id}`}
                         className="truncate text-sm font-medium text-gray-900 hover:underline"
                       >
                         {video.title}
-                      </a>
+                      </Link>
                       <div className="flex flex-shrink-0 items-center gap-2">
                         <RiskBadge risk={video.riskScore} />
                         <ScanBadge status={video.scanStatus} />

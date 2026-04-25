@@ -61,9 +61,10 @@ export const fetchAnalyticsFunction = inngest.createFunction(
       if (!dbVideoId) continue
 
       await step.run(`save-snapshot-${snap.youtubeVideoId}-${snap.date}`, () =>
-        db.revenueSnapshot.upsert({
-          where: { channelId_date: { channelId, date: new Date(snap.date) } },
+        db.videoRevenueSnapshot.upsert({
+          where: { videoId_date: { videoId: dbVideoId, date: new Date(snap.date) } },
           create: {
+            videoId: dbVideoId,
             channelId,
             date: new Date(snap.date),
             estimatedRevenue: snap.estimatedRevenue,

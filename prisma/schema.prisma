@@ -99,8 +99,9 @@ model Video {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  channel     Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  videoTracks VideoTrack[]
+  channel              Channel              @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  videoTracks          VideoTrack[]
+  videoRevenueSnapshots VideoRevenueSnapshot[]
 
   @@map("videos")
 }
@@ -136,12 +137,13 @@ model Track {
 }
 
 model VideoTrack {
-  id         String      @id @default(cuid())
-  videoId    String
-  trackId    String
-  source     TrackSource @default(AUDD)
-  confidence Float?
-  detectedAt DateTime    @default(now())
+  id            String      @id @default(cuid())
+  videoId       String
+  trackId       String
+  source        TrackSource @default(AUDD)
+  confidence    Float?
+  offsetSeconds Int?
+  detectedAt    DateTime    @default(now())
 
   video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
   track Track @relation(fields: [trackId], references: [id])
@@ -197,6 +199,21 @@ model RevenueSnapshot {
 
   @@unique([channelId, date])
   @@map("revenue_snapshots")
+}
+
+model VideoRevenueSnapshot {
+  id               String   @id @default(cuid())
+  videoId          String
+  channelId        String
+  date             DateTime @db.Date
+  estimatedRevenue Float?
+  views            Int?
+  createdAt        DateTime @default(now())
+
+  video   Video   @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, date])
+  @@map("video_revenue_snapshots")
 }
 
 model Alert {

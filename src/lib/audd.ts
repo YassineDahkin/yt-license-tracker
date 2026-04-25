@@ -19,6 +19,11 @@ export interface AudDTrack {
   isrc?: string
 }
 
+export interface AudDTrackWithOffset extends AudDTrack {
+  isrc?: string
+  offsetSeconds: number
+}
+
 interface AudDResponse {
   status: "success" | "error"
   result: (AudDTrack & {
@@ -144,10 +149,10 @@ function trackKey(t: AudDTrack & { isrc?: string }): string {
   return t.isrc ?? `${t.artist.toLowerCase().trim()}::${t.title.toLowerCase().trim()}`
 }
 
-// Download once, sample all offsets — return ALL unique tracks found
+// Download once, sample all offsets — return ALL unique tracks with their detection offset
 export async function recognizeMusicInVideo(
   youtubeVideoId: string,
-): Promise<(AudDTrack & { isrc?: string })[]> {
+): Promise<AudDTrackWithOffset[]> {
   if (!process.env.AUDD_API_KEY) return []
 
   const tmpPath = await downloadAudioToFile(youtubeVideoId)
@@ -159,7 +164,7 @@ export async function recognizeMusicInVideo(
     }
 
     const seen = new Set<string>()
-    const tracks: (AudDTrack & { isrc?: string })[] = []
+    const tracks: AudDTrackWithOffset[] = []
 
     for (const offset of SCAN_OFFSETS) {
       const buf = await extractSegmentFromFile(tmpPath, offset)
@@ -173,7 +178,7 @@ export async function recognizeMusicInVideo(
         const key = trackKey(result)
         if (!seen.has(key)) {
           seen.add(key)
-          tracks.push(result)
+          tracks.push({ ...result, offsetSeconds: offset })
         }
       }
     }

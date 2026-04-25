@@ -57,7 +57,7 @@ export const scanVideoFunction = inngest.createFunction(
             db.videoTrack.upsert({
               where: { videoId_trackId: { videoId, trackId: track.id } },
               update: {},
-              create: { videoId, trackId: track.id, source: "AUDD", confidence: 1.0 },
+              create: { videoId, trackId: track.id, source: "AUDD", confidence: 1.0, offsetSeconds: auddResult.offsetSeconds },
             }),
           )
         }
